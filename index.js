@@ -1,55 +1,71 @@
-const express = require('express');
+const Tesseract = require('tesseract.js');
+const fs = require('fs');
+const { createWorker } = Tesseract;
 
-const fs= require('fs');
+ 
 
-const multer = require('multer');
+ 
+// Define the path to your image file
+const imagePath = 'C:/Users/durgesh_thakur/Downloads/adhar.jpg';
 
-const Tesseract = require('Tesseract.js');
 
-const app = express();
+// Create a new worker
+const worker = createWorker({
+    logger: m => console.log(m)
+  });
 
-// app.use(bodyParser.urlencoded({extended: true}))
+// Read the image file
+const image = fs.readFileSync(imagePath);
 
-const PORT = process.env.PORT | 5000;   
+(async () => {
+  // Initialize the worker
+  await worker.load();
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
 
-var Storage = multer.diskStorage({
-    destination: function (req, file, callback) {
-      callback(null, 'images')
-    },
-    filename: function (req, file, callback) {
-      callback(null, file.orignalname);
+  // Extract text from the image
+  const { data } = await worker.recognize(image);
+  const extractedText = data.text;
+
+  // Parse the extracted text and extract the details
+  const details = parseExtractedText(extractedText);
+
+  // Output the details in JSON format
+  console.log(JSON.stringify(details, null, 2));
+
+  // Terminate the worker
+  await worker.terminate();
+})();
+
+function parseExtractedText(text) {
+  const details = {};
+
+  // Aadhaar Card
+  if (text.match(/aadhaar card/i)) {
+    const aadhaarRegex = /(\d{4}\s?){3}\d{4}/g;
+    const aadhaarNumber = text.match(aadhaarRegex);
+    if (aadhaarNumber) {
+      details.aadhaarNumber = aadhaarNumber[0].replace(/\s/g, '');
     }
-});
-var upload = multer({
- storage: Storage 
-}).array('image', 3);
-//route
-app.post('/', (req, res) => {});
+  }
 
-app.post('/upload', (req, res) => {
-    console.log(req.file);
-    upload(req, res , err => {
-        if (err) {
-            console.log(err);
-            return res.send('somthing went wrong');
-        }
-        return res.send('file uploaded successfully');
-    });
-});
+  // PAN Card
+  if (text.match(/permanent account number/i)) {
+    const panRegex = /[a-z]{5}\d{4}[a-z]{1}/i;
+    const panNumber = text.match(panRegex);
+    if (panNumber) {
+      details.panNumber = panNumber[0].toUpperCase();
+    }
+  }
 
-var image = fs.readFileSync(__dirname + '\\adhar.jpg', 
-    {
-        encoding:null
-    });
+  // Driving License
+  if (text.match(/driving licence/i)) {
+    const dlRegex = /[a-z]{2}-\d{13}/i;
+    const dlNumber = text.match(dlRegex);
+    if (dlNumber) {
+      details.drivingLicenseNumber = dlNumber[0].toUpperCase();
+    }
+  }
 
-Tesseract.recognize(image)
-    .progress(function(p) {
-        console.log('progress', p);
-    })
-    .then(function(result) {
-        res.send('result', result);
-    });
-
-app.listen(PORT, () => {
-    console.log('Server running on PORT ${PORT}')
-});
+  return details;
+}
